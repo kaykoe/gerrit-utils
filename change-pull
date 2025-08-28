@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+
+function fatal() {
+    echo
+    echo -e '[ERROR]>>' "$*"
+    exit 1
+}
+
+function update_branch() {
+    local -i argc
+    argc=2
+    [[ $# -eq $argc ]] || fatal 'Incorrect number of arguments to update_branch\n' "wanted: $argc\n" "got: $#\n"
+    [[ -n "$1" ]] || fatal 'Branch given as empty string to update_branch'
+    [[ -n "$2" ]] || fatal 'Change ref given as empty string to update_branch'
+
+    local branch
+    local change_ref
+    local -i current_patchset
+
+    branch="$1"
+    change_ref="$2"
+
+    declare -i current_patchset
+    current_patchset=$(patchset-parse rev-list --count HEAD ^BASE)
+    [[ $current_patchset -gt 0 ]] || fatal 'Current_patchset parsed as non positive\n' "Current patchset: $current_patchset"
+
+    echo
+    echo "Current patchset is $current_patchset"
+    fetch_patchsets_from "$branch" "$change_ref" $((++current_patchset))
+}
+
+function fetch_patchsets_from() {
+    local -i argc
+    argc=3
+    [[ $# -eq $argc ]] || fatal 'Incorrect number of arguments to fetch_patchsets_from\n' "wanted: $argc\n" "got: $#\n"
+    [[ -n $1 ]] || fatal 'Branch given as empty string to fetch_patchsets_from'
+    [[ -n $2 ]] || fatal 'Change ref given as empty string to fetch_patchsets_from'
+
+    local branch
+    local change_ref
+    local -i next_patchset
+
+    branch="$1"
+    change_ref="$2"
+    next_patchset=$3
+
+    while true; do
+        if git fetch origin "refs/changes/$change_ref/$next_patchset" &>/dev/null; then
+            echo "Fetching patchset $next_patchset..."
+            if ! git merge-base --is-ancestor FETCH_HEAD~1 "$branch"; then
+                echo
+                echo "In patchset $next_patchset the change was rebased, attempting rebase"
+                patchset-parse rebase --onto FETCH_HEAD~1 BASE "$branch"
+            fi
+            git cherry-pick -x --keep-redundant-commits FETCH_HEAD -X theirs &>/dev/null
+            ((next_patchset++))
+        else
+            echo
+            echo 'All patchsets fetched.'
+            echo 'Change up to date!'
+            break
+        fi
+    done
+}
+
+if [[ -n $1 ]]; then
+    change_url="$1"
+    change_ref="$(echo "$change_url" | sed -E 's|^.*\+/([[:digit:]]+)([[:digit:]]{2})(/.*)?$|\2/\1\2|')"
+    branch="change-${change_ref#*/}"
+
+    git fetch origin "refs/changes/$change_ref/1" -q || fatal "Failed to fetch from url: $1\nMake sure you are inside a git repository and your url is correct"
+
+    # create branch if it doesn't already exist
+    if [[ -z "$(git branch --list "$branch")" ]]; then
+        echo -e "\nCreating new branch $branch"
+        git switch -c "$branch" FETCH_HEAD~1 -q
+        echo 'Fetching first patchset...'
+        git cherry-pick -x --keep-redundant-commits FETCH_HEAD -X theirs &>/dev/null
+    else
+        echo -e "\nSwitching to branch $branch"
+        git switch "$branch" -q
+    fi
+    update_branch "$branch" "$change_ref"
+
+elif [[ "$(git branch --show-current)" =~ change-.* ]]; then
+    branch="$(git branch --show-current)"
+    change_number="$(echo "$branch" | cut -d- -f2)"
+    change_prefix="${change_number:(-2):2}"
+    change_ref="$change_prefix/$change_number"
+
+    update_branch "$branch " "$change_ref"
+
+else
+    fatal 'You need to provide a change url or be checked out on a change branch'
+fi

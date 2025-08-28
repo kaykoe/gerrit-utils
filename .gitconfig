@@ -1,0 +1,9 @@
+[alias]
+    msg-hook-get = "!gitdir=$(git rev-parse --git-dir); curl -o ${gitdir}/hooks/commit-msg https://gerrit.ext.net.nokia.com/gerrit/static/commit-msg ; chmod +x ${gitdir}/hooks/commit-msg"
+    cpull = !change-pull
+    clog = !patchset-parse log ^BASE HEAD
+    cshow = !patchset-parse show ^BASE HEAD
+    pshow = !patchset-parse show
+    pdiff = !patchset-parse diff
+    pcheckout = !patchset-parse checkout
+
