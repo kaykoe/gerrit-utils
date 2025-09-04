@@ -2,7 +2,7 @@
 
 function fatal() {
     echo
-    echo -e '[ERROR]>>' "$*"
+    echo -e '[ERROR]>>' "$*" >&2
     exit 1
 }
 
