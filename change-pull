@@ -84,7 +84,7 @@ if [[ -n $1 ]]; then
 
 elif [[ "$(git branch --show-current)" =~ change-.* ]]; then
     branch="$(git branch --show-current)"
-    change_number="$(echo "$branch" | cut -d- -f2)"
+    change_number="${branch#change-}"
     change_prefix="${change_number:(-2):2}"
     change_ref="$change_prefix/$change_number"
 
