@@ -1,48 +1,60 @@
 #!/usr/bin/env bash
 
 function fatal() {
-    echo
-    echo -e '[ERROR]>>' "$*" >&2
-    exit 1
+	echo
+	echo -e '[ERROR]>>' "$*" >&2
+	exit 1
 }
 
 if [[ "$1" =~ ^(--help|-h)$ ]]; then
-    # TODO: add help dialog
-    fatal 'Not implemented'
+	# TODO: add help dialog
+	fatal 'Not implemented'
 fi
 
-[[ "$(git branch --show-current)" =~ change-.* ]] || fatal 'You need to be checked out on a change branch to use this command'
-[[ $# -gt 0 ]] || fatal 'No arguments given, just use the standard git command'
+if ! [[ "$(git branch --show-current)" =~ change-.* ]]; then
+	fatal 'You need to be checked out on a change branch to use this command'
+elif [[ $# -le 1 ]]; then
+	fatal 'No arguments given, just use the standard git command'
+fi
 
 # Parse 'cherry picked from' footer
-git show --pretty=%b -s | sed '/^\s*$/d' | tac | grep -P '(?<=\s)[0-9a-f]{40}(?=\)$)' --only-matching | head -n 1 | xargs -I{} git rev-parse --verify {}~1 >"$(git rev-parse --git-dir)/BASE"
+git show --pretty=%b -s |
+	sed '/^\s*$/d' |
+	tac |
+	grep -P '(?<=\s)[0-9a-f]{40}(?=\)$)' --only-matching |
+	head -n 1 |
+	xargs -I{} git rev-parse --verify {}~1 >"$(git rev-parse --git-dir)/BASE"
+
 trap 'rm -rf "$(git rev-parse --git-dir)/BASE"' EXIT
 patchset_regex="^(\^)?([1-9][0-9]*)((~|\^)[0-9]*)?(:.*)?$"
 
 declare -i current_patchset
 current_patchset=$(git rev-list --count HEAD ^BASE)
-[[ $current_patchset -gt 0 ]] || fatal 'Current_patchset parsed as non positive\n' "Current patchset: $current_patchset"
+if [[ $current_patchset -le 0 ]]; then
+	fatal 'Current_patchset parsed as non positive\n' \
+		"Current patchset: $current_patchset"
+fi
 
 command="$1"
 shift
 declare -a args
 
 while [[ $# -gt 0 ]]; do
-    if grep -Eq "$patchset_regex" <<<"$1"; then
-        declare -i patchset
-        patchset="$(sed -E "s/$patchset_regex/\2/" <<<"$1")"
+	if grep -Eq "$patchset_regex" <<<"$1"; then
+		declare -i patchset
+		patchset="$(sed -E "s/$patchset_regex/\2/" <<<"$1")"
 
-        patchset_ref="$(git rev-parse --verify HEAD~$((current_patchset - patchset)))"
-        rev="$(sed -E "s/$patchset_regex/\1$patchset_ref\3\5/" <<<"$1")"
-        args+=("$rev")
+		patchset_ref="$(git rev-parse --verify HEAD~$((current_patchset - patchset)))"
+		rev="$(sed -E "s/$patchset_regex/\1$patchset_ref\3\5/" <<<"$1")"
+		args+=("$rev")
 
-    elif [[ "$1" == "-n" ]]; then
-        args+=("$1" "$2")
-        shift
+	elif [[ "$1" == "-n" ]]; then
+		args+=("$1" "$2")
+		shift
 
-    else
-        args+=("$1")
-    fi
-    shift
+	else
+		args+=("$1")
+	fi
+	shift
 done
 git "$command" "${args[@]}"
