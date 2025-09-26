@@ -94,7 +94,7 @@ elif [[ "$(git branch --show-current)" =~ change-.* ]]; then
 	change_prefix="${change_number:(-2):2}"
 	change_ref="$change_prefix/$change_number"
 
-	update_branch "$branch " "$change_ref"
+	update_branch "$branch" "$change_ref"
 
 else
 	fatal 'You need to provide a change url or be checked out on a change branch'
